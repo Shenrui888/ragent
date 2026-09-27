@@ -29,25 +29,37 @@ SYSTEM = (f"你是一个在{WORKDIR}代码Agent"
 # tool_moudle
 
 def run_bash(command:str)->str:
-    bash_run = subprocess.run(
-        command, shell=True, cwd=WORKDIR,
-        capture_output=True, text=True, errors="replace",
-        timeout=120
-    )
+    # 解决工具输出乱码
+    if os.name == "nt":
+        subprocess.run(
+            "chcp 65001 >nul", shell=True
+        )
+    try:
+        # 子进程职责：执行命令，处理输出字符
+        bash_run = subprocess.run(
+            command, shell=True, cwd=WORKDIR,
+            capture_output=True, text=True, errors="replace",
+            timeout=120,encoding='utf-8'
+        )
+    except TimeoutError:
+        return "Error: Time out(120s)"
     output = (bash_run.stderr + bash_run.stdout).strip()
+    print(output[:200])
     return output[:500] if output else "No output"
 
     # manager
 class TodoManager:
     def __init__(self):
+        # 模型可看到的内容
         self.items: list[dict] = []
 
     def update(self, todos: list | str)->str:
+        #
         if isinstance(todos, str):
             try:
                 todos = json.loads(todos)
             except json.JSONDecodeError:
-                todo = ast.literal_eval(todos)
+                todos = ast.literal_eval(todos)
         elif not isinstance(todos, list):
             raise ValueError("todos must be a list pr JSON string")
         validate = []
@@ -64,6 +76,7 @@ class TodoManager:
         return self.render()
 
     def render(self)->str:
+        # lines -> 终端给用户的内容
         lines = []
         for todo in self.items:
             maker = {
@@ -190,6 +203,7 @@ def agent_loop(messages: list):
         results = []
         used_todo = False
         for block in tool_calls:
+
             blocked = trigger_hooks("PreToolUse",block)
             if blocked:
                 results.append({
@@ -197,6 +211,7 @@ def agent_loop(messages: list):
                     "tool_use_id": block.id,
                     "content": str(blocked),
                 })
+
             handler = TOOL_HANDLERS.get(block.name)
             output = handler(**block.input) if handler else "No such tool"
             trigger_hooks("PostToolUse",block)
