@@ -78,7 +78,7 @@ def permission_hook(block) -> str:
 # 将主循环“打印”命令职责转移到log_hook函数
 def log_hook(block):
     '''PreToolUse: 记录每次工具调用'''
-    args_preview = str(list(block.input.valuse())[:2])[:60]
+    args_preview = str(list(block.input.values())[:2])[:60]
     print(f"[钩子] {block.name}({args_preview})")
     return None
 

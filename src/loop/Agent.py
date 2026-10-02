@@ -1,7 +1,7 @@
 from anthropic import Anthropic
 import os
 from config import MODEL,SYSTEM
-from tools.base_tools import *
+from tools.main_tools import *
 from hooks.Hooks import *
 
 try:
@@ -12,15 +12,15 @@ try:
     readline.parse_and_bind('set convert-meta off')
 except ImportError:
     pass
-if os.getenv("ANTHROPIC_BASE_URL"):
-    os.environ.pop("ANTHROPIC_AUTO_TOKEN", None)
+
 client = Anthropic(base_url=os.getenv("ANTHROPIC_BASE_URL"))
 
 # loop_moudle
 def agent_loop(messages: list):
+    round_since_todo = 0
     while True:
         response = client.messages.create(
-            model=MODEL, tools=BASE_TOOLS, system=SYSTEM,
+            model=MODEL, tools=TOOLS, system=SYSTEM,
             max_tokens=8000, messages=messages
         )
         messages.append({
@@ -36,6 +36,7 @@ def agent_loop(messages: list):
             return
 
         results = []
+        use_todo = False
         for block in tool_calls:
             blocked = trigger_hook("PreToolUse", block)
             if blocked:
@@ -45,13 +46,25 @@ def agent_loop(messages: list):
                     "content": str(blocked),
                 })
                 continue
-            output = execute_tool(block, BASE_HANDLERS)
-            trigger_hook("PostToolUse", block)
+            try:
+                output = execute_tool(block, TOOL_HANDLERS)
+            except Exception as e:
+                output = f"Error: {e}"
+            trigger_hook("PostToolUse", block, output)
+            if block.name == "todo_write":
+                use_todo = True
             results.append({
                 "type":"tool_result",
                 "tool_use_id":block.id,
                 "content":str(output), 
             })
+        round_since_todo = 0 if use_todo else round_since_todo +1
+        if round_since_todo >= 3:
+            results.append({
+                "type": "text",
+                "text": "<reminder>Update your todos</reminder>"
+            })
+        
         messages.append(
             {"role":"user", "content":results}
         )
